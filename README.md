@@ -3,7 +3,9 @@
 ## Summary
 Sum-of-Gaussians Neural Network (SOG-Net) is a lightweight and versatile framework for integrating long-range interactions into machine learning force field. The SOG-Net employs a latent-variable learning network that seamlessly bridges short-range and long-range components, coupled with an efficient Fourier convolution layer that incorporates long-range effects. By learning sum-of-Gaussians multipliers across different convolution layers, the SOG-Net adaptively captures diverse long-range decay behaviors while maintaining close-to-linear computational complexity during training and simulation via non-uniform fast Fourier transforms.
 
-Authors: Yajie Ji, Jiuyang Liang, Zhenli Xu. Paper Links: [ArXiv](https://arxiv.org/abs/2502.04668)
+Authors: Yajie Ji, Jiuyang Liang, Zhenli Xu. 
+
+Paper Links: [ArXiv](https://arxiv.org/abs/2502.04668)
 
 ## Requirements
 - Python 3.10.9 or higher
