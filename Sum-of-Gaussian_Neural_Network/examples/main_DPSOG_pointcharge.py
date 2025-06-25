@@ -9,9 +9,7 @@ import sys
 import json
 import time
 import csv
-import datetime  #时间戳
-
-
+import datetime  # Timestamp
 
 from SOG_Net.utilities import gen_coor_3d
 from SOG_Net.train import train_pointcharge
@@ -22,58 +20,57 @@ os.environ['KMP_DUPLICATE_LIB_OK']='True'
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 
 if tf.test.is_built_with_cuda():
-    print("TensorFlow 已编译支持 GPU 加速")
+  print("TensorFlow is compiled with GPU support")
 else:
-    print("TensorFlow 未编译支持 GPU 加速")
+  print("TensorFlow is not compiled with GPU support")
 
-# 检查当前 TensorFlow 是否在 GPU 上执行
+# Check if TensorFlow is currently executing on a GPU
 if tf.test.gpu_device_name():
-    print("当前 TensorFlow 正在使用 GPU:", tf.test.gpu_device_name())
+  print("TensorFlow is currently using GPU:", tf.test.gpu_device_name())
 else:
-    print("当前 TensorFlow 没有在 GPU 上执行")
+  print("TensorFlow is not executing on a GPU")
 gpus = tf.config.experimental.list_physical_devices('GPU')
 
-###  获取时间戳  ###
+### Get timestamp ###
 now = datetime.datetime.now()
 time_name0=now.strftime("%Y%m%d_%H%M%S")
 
 # Input Data
 # here we assume the data is generated within some cells. The number of cells in
-# each dimension is "Ncells". "Np" shows the number of particles in per cell. 
-# For simiplicity, we assume they are generated randomly uniformly.   
-Nsamples = 1000                        # 100 number of samples 
-descriptorNet = [2, 4, 8, 16, 32]        # [2, 4, 8, 16, 32] size of descriptor network       
-fittingNet = [32, 32, 32, 32, 32, 32]    # [32, 32, 32, 32, 32, 32] size of fitting network
-epochsPerStair = 100                      # 10 decay step of learning rate   
-learningRate = 0.001                     # 0.001 initial learning rate
-decayRate = 0.99                         # 0.95 decay rate of learning rate
-Nepochs = [200, 400, 800, 1600]          # [200, 400, 800, 1600] epoch
-batchSizeArray = [8, 16, 32, 64]            # [8,16,32,64] batchsize      
-maxNumNeighs = 20                       # 120 最大近邻数 maximal number of neighbors
-radious = 1.5                             # 8 近场截断半径 short-range interaction radious 
-NpointsFourier = 17                      # 21 Fourier Mode 数量 the number of Fourier modes 
-fftChannels = 1                          # 1 FFT频道 the number of FFT channels 
-DataType = "Periodic"                    # "YukawaPeriodic" data type
-L = 10                                   # 总的盒子边长
-xLims = [0.0, L]                         # x方向的范围
-Npoints = 200                           #总粒子数 1000 单个构型的
+# Each dimension is "Ncells". "Np" shows the number of particles per cell. 
+# For simplicity, we assume they are generated randomly and uniformly.   
+Nsamples = 1000                        # Number of samples 
+descriptorNet = [2, 4, 8, 16, 32]      # Size of descriptor network       
+fittingNet = [32, 32, 32, 32, 32, 32]  # Size of fitting network
+epochsPerStair = 100                   # Decay step of learning rate   
+learningRate = 0.001                   # Initial learning rate
+decayRate = 0.99                       # Decay rate of learning rate
+Nepochs = [200, 400, 800, 1600]        # Epochs for training
+batchSizeArray = [8, 16, 32, 64]       # Batch sizes for training      
+maxNumNeighs = 20                      # Maximum number of neighbors
+radious = 1.5                          # Short-range interaction radius 
+NpointsFourier = 17                    # Number of Fourier modes 
+fftChannels = 1                        # Number of FFT channels 
+DataType = "Periodic"                  # Data type
+L = 10                                 # Total box length
+xLims = [0.0, L]                       # Range in the x-direction
+Npoints = 200                          # Total number of particles per configuration
 
 # read data file
 dataFile="Sum-of-Gaussian_Neural_Network/dataset/pointcharge_data_train.h5";
 print(dataFile)
 
 nameScript="_Nsamples_" + str(Nsamples) +  "_NpointsFourier_" + str(NpointsFourier) + "_radious_" + str(radious) + "_decayRate_" + str(decayRate) 
+# Folder for saving loss, accuracy, and model
+saveFolder = "Sum-of-Gaussian_Neural_Network/model_and_loss/pointcharge/"
 
-#Folder for saving loss, accuracy and model
-saveFolder  = "Sum-of-Gaussian_Neural_Network/model_and_loss/pointcharge/"
-
-# extracting the data
+# Extracting the data
 hf = h5py.File(dataFile, 'r')
 
-pointsArray = hf['points'][:]  #点的坐标数组
-forcesArray = hf['forces'][:]  #力的数组
-energyArray = hf['energy'][:]  #能量的数组
-chargesArray = hf['charges'][:]  #电荷的数组  
+pointsArray = hf['points'][:]  # Array of point coordinates
+forcesArray = hf['forces'][:]  # Array of forces
+energyArray = hf['energy'][:]  # Array of energies
+chargesArray = hf['charges'][:]  # Array of charges
 
 pointsArray[pointsArray < 0.0] += L
 pointsArray[pointsArray >= L] -= L
@@ -83,16 +80,12 @@ forcesArray = np.transpose(forcesArray, axes=(2, 1, 0))
 energyArray = np.transpose(energyArray, axes=(1, 0))
 chargesArray = np.transpose(chargesArray, axes=(1, 0))
 
-print(forcesArray.shape)
-print(energyArray.shape)
-print(chargesArray.shape)
-
-Rinput = tf.Variable(pointsArray, name="input", dtype = tf.float32) # 将数组信息输入tensorflow，可以通过反向传播和优化算法进行调整，pointsArray提供初始值的静态数据，“name”参数帮助在模型中标识和管理这个变量
+Rinput = tf.Variable(pointsArray, name="input", dtype = tf.float32) # Input the array information into TensorFlow, allowing adjustments through backpropagation and optimization algorithms. pointsArray provides the static data for initialization, and the "name" parameter helps identify and manage this variable within the model.
 Cinput = tf.Variable(chargesArray, name="input", dtype = tf.float32)
 
 # we only consider the first 100 
-Rin = Rinput[:100,:,:] # 从Rinput中提取前100个构型，和相应的所有元素，赋值给Rin数组
-Rinnumpy = Rin.numpy() # 将张量Rin的值转化为Rinnumpy数组，可以使用numpy的高效操作进行分析
+Rin = Rinput[:100,:,:] # Extract the first 100 configurations and all corresponding elements from Rinput, assigning them to the Rin array
+Rinnumpy = Rin.numpy() # Convert the tensor Rin into the Rinnumpy array to enable efficient analysis using numpy operations
 
 #This is the new implementation
 n_samples, n_points, dimension = Rinnumpy.shape
@@ -106,18 +99,16 @@ for i in range(n_samples):
     for j,row in enumerate(r_list):
       Idx[i,j,:len(row)]=row
 
-#Idx = comput_inter_list(Rinnumpy, L,  radious, maxNumNeighs) # 计算近邻表
-
 # compute the neighbor list. shape:(Nsamples, Npoints and MaxNumneighs)
-neighList = tf.Variable(Idx) #将生成的近邻表传递进去
+neighList = tf.Variable(Idx) # Pass the generated neighbor list into the variable
 
 genCoordinates = gen_coor_3d(Rin, neighList, L)
 # compute the generated coordinates
 filter = tf.cast(tf.reduce_sum(tf.abs(genCoordinates), axis = -1)>0, tf.int32)
-numNonZero =  tf.reduce_sum(filter, axis = 0).numpy() # 非零元素个数 7941106
-numTotal = genCoordinates.shape[0] # 零元素个数 12000000
+numNonZero =  tf.reduce_sum(filter, axis = 0).numpy() # Number of non-zero elements: 7941106
+numTotal = genCoordinates.shape[0] # Total number of elements: 12000000
 
-# 均值为0 方差为1
+# Mean is 0, variance is 1
 av = tf.reduce_sum(genCoordinates, axis = 0, keepdims =True).numpy()[0]/numNonZero
 std = np.sqrt((tf.reduce_sum(tf.square(genCoordinates - av), axis = 0, keepdims=True).numpy()[0] - av**2*(numTotal-numNonZero)) /numNonZero)
 
@@ -175,10 +166,10 @@ print(dataFile)
 # extracting the data
 hf = h5py.File(dataFile, 'r')
 
-pointsTest = hf['points'][:]  #点的坐标数组
-forcesTest = hf['forces'][:]  #力的数组
-energyTest = hf['energy'][:]  #能量的数组
-chargesTest = hf['charges'][:]  #电荷的数组  
+pointsTest = hf['points'][:]  # Array of point coordinates
+forcesTest = hf['forces'][:]  # Array of forces
+energyTest = hf['energy'][:]  # Array of energies
+chargesTest = hf['charges'][:]  # Array of charges
 
 pointsTest[pointsTest < 0] += L
 pointsTest[pointsTest >= L] -= L
@@ -187,10 +178,6 @@ pointsTest = np.transpose(pointsTest, axes=(2, 1, 0))
 forcesTest = np.transpose(forcesTest, axes=(2, 1, 0))
 energyTest = np.transpose(energyTest, axes=(1, 0))
 chargesTest = np.transpose(chargesTest, axes=(1, 0))
-
-#print(pointsTest.shape)
-#print(energyTest.shape)
-#print(chargesTest.shape)
 
 #This is the new implementation
 n_samples, n_points, dimension = pointsTest.shape
@@ -202,14 +189,8 @@ for i in range(n_samples):
     r_list=[[elem for elem in row if elem!=i] for i,row in enumerate(r_list)]    
     for j,row in enumerate(r_list):
       IdxTest[i,j,:len(row)]=row
-
-#print(maxNumNeighs)
-
 neighListTest = tf.Variable(IdxTest)
 
-#model.load_weights('./loss_accuracy_and_model/20240613_122208my_model_3.h5')
-#rin_test = tf.Variable(points_test, dtype=tf.float32)
-#forces_test = tf.Variable(forces_test, dtype=tf.float32)
 ###################training loop ##################################
 now = datetime.datetime.now()
 time_name=now.strftime("%Y%m%d_%H%M%S")
@@ -253,8 +234,6 @@ for cycle, (epochs, batchSizeL) in enumerate(zip(Nepochs, batchSizeArray)):
       Idx = np.zeros((n_samples, n_points, maxNumNeighs), dtype=np.int32)-1
       for i in range(n_samples):
         r_sample=Rinnumpy[i]
-        #print(tf.reduce_max(r_sample))
-        #print(tf.reduce_min(r_sample))
         tree=cKDTree(r_sample,boxsize=[L,L,L])
         r_list = tree.query_ball_point(r_sample,radious)
         r_list=[[elem for elem in row if elem!=i] for i,row in enumerate(r_list)] 
@@ -264,17 +243,12 @@ for cycle, (epochs, batchSizeL) in enumerate(zip(Nepochs, batchSizeArray)):
       neighList = tf.Variable(Idx)
       
       before_loss_time = time.time()
-      
-      # if step % 10 ==0 :
-      #   print(f'List took {before_loss_time - start_epoch_time:.6f} seconds')
 
-      #x_batch_train[0] 输入  x_batch_train[1] 能量输出  x_batch_train[2]力的输出
+      # x_batch_train[0] input, x_batch_train[1] energy output, x_batch_train[2] force output
       loss,_ = train_pointcharge(model, optimizer, mse_loss_fn, x_batch_train[0], neighList, x_batch_train[3], x_batch_train[1], x_batch_train[2], weightE, weightF)
                            
       after_loss_time = time.time()
       
-      # if step % 10 == 0:
-      #   print(f'Train outloss took {after_loss_time - before_loss_time:.6f} seconds')
 
       loss_metric(loss)
       if step % 10 == 0:
@@ -296,7 +270,6 @@ for cycle, (epochs, batchSizeL) in enumerate(zip(Nepochs, batchSizeArray)):
       for j,row in enumerate(r_list):
         Idx[i,j,:len(row)]=row
     neighList = tf.Variable(Idx)
-    #print(neighList.shape)
     
     pottrain, forcetrain = model(r_input, chargesArray[:10,:], neighList)
 
@@ -305,8 +278,6 @@ for cycle, (epochs, batchSizeL) in enumerate(zip(Nepochs, batchSizeArray)):
 
     err_ener_train=tf.sqrt(tf.reduce_sum(tf.square(pottrain-energyArray[:10,:])))/tf.sqrt(tf.reduce_sum(tf.square(pottrain)))
 
-    #print(pottrain.shape(),potentialArray.shape())
-    #print("Relative Error in the trained energy is " +str(err_ener_train.numpy()))
     print("Relative Error in the trained forces is " +str(errtrain.numpy()))
 
     potPred, forcePred = model(pointsTest, chargesTest, neighListTest)
@@ -315,7 +286,6 @@ for cycle, (epochs, batchSizeL) in enumerate(zip(Nepochs, batchSizeArray)):
     print(potPred.shape,energyTest.shape)
     err_ener=tf.sqrt(tf.reduce_sum(tf.square(potPred - energyTest)))/tf.sqrt(tf.reduce_sum(tf.square(potPred)))
 
-    #print("Relative Error in the energy is " +str(err_ener.numpy()))
     print("Relative Error in the forces is " +str(err.numpy()))
 
     end = time.time()
@@ -345,14 +315,8 @@ for cycle, (epochs, batchSizeL) in enumerate(zip(Nepochs, batchSizeArray)):
         f_csv = csv.writer(f)
         f_csv.writerow(losslist)
     
-  # 获取目录路径
-  #directory = os.path.dirname(checkFile)
-
-  # 如果目录不存在，则创建目录
-  #if not os.path.exists(directory):
-  #  os.makedirs(directory)
   print("saving the weights")
-  ###  获取时间戳  ###
+  ### Get timestamp ###
   str_num = str(cycle)
 
   model.save_weights(saveFolder+time_name+'my_model_'+str_num+'.h5', save_format='h5')
