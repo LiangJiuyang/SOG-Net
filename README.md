@@ -13,3 +13,4 @@
 ## Citation
 
 ## Contact
+For any queries regarding SOG-Net, please contact Yajie Ji (jiyajie595@sjtu.edu.cn) or Jiuyang Liang (jliang@flatironinstitute.org).
