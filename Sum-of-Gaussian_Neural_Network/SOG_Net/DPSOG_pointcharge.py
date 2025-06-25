@@ -50,50 +50,23 @@ class DPSOG_pointcharge(tf.keras.Model):
     with tf.GradientTape() as tape:
       # we watch the inputs 
       tape.watch(inputs)
-      # shape (Nsamples, Npoints)
 
       gen_coordinates = gen_coor_3d_Q(inputs,charge,  neigh_list, self.L, self.av, self.std)
-      #print(gen_coordinates.shape)
-      # (Nsamples*Npoints*maxNumNeighs, 3)
       L1 = self.layerPyramid(gen_coordinates[:,:1])*gen_coordinates[:,:1]
-      #print("it is ",L1.shape) # 26800 32
-      # (Nsamples*Npoints*maxNumNeighs, descriptorDim)
       L2 = self.layerPyramidDir(gen_coordinates[:,1:4])*gen_coordinates[:,:1]
-      
-      #print("shape,",gen_coordinates.shape)
       L1_Q = self.layerPyramid_Q(gen_coordinates[:,4:5])*gen_coordinates[:,:1]
       L2_Q = self.layerPyramidDir_Q(gen_coordinates[:,5:])*gen_coordinates[:,:1]
-
-      #print("it is ", L2_Q.shape) # 26800 32
-
-      # (Nsamples*Npoints*maxNumNeighs, 3)
-      #L1_q = self.layerPyramid(gen_coordinates[:,4])*gen_coordinates[:,:1]
-      # (Nsamples*Npoints*maxNumNeighs, descriptorDim)
-      #L2_q = self.layerPyramidDir(gen_coordinates[:,5:])*gen_coordinates[:,:1]
       LL = tf.concat([L1, L2, L1_Q, L2_Q], axis = 1)
-      # (Nsamples*Npoints*maxNumNeighs, descriptorDim)
       Dtemp = tf.reshape(LL, (-1, self.maxNumNeighs, 4*self.descriptorDim))
-      #print("shape", LL.shape, self.maxNumNeighs, 4*self.descriptorDim)
-      #print(Dtemp.shape)
-      # (Nsamples*Ncells*Np, maxNumNeighs, descriptorDim)
       D = tf.reduce_sum(Dtemp, axis = 1)
-      #print(D.shape)
-     # print("Hi")
-      #print(charge.shape)
-      # (Nsamples*Npoints, descriptorDim*descriptorDim)
-
       long_range_coord = self.lrc_layer(inputs, charge)
-
       long_range_coord2 = tf.reshape(long_range_coord, (-1, self.fftChannels))
-      # (Nsamples*Ncells*Np, 1)
       L3   = self.layer_pyramid_lr(long_range_coord2)
       DLongRange = tf.concat([D, L3], axis = 1)
       F2 = self.fittingNetwork(DLongRange)
       F = self.linfitNet(F2)
-      
       F_reshape = tf.reshape(F, (-1, self.Npoints))
       Energy = tf.reduce_sum(F_reshape, keepdims = True, axis = 1)
-
-      #Energy = tf.reduce_sum(tf.cast(charge, tf.float32) * F_reshape, keepdims = True, axis = 1)
+      
     Forces = -tape.gradient(Energy, inputs)
     return Energy, Forces

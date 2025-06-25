@@ -70,7 +70,6 @@ class SOG_3D_pointcharge(tf.keras.layers.Layer):
     self.x_grid, self.y_grid, self.z_grid = tf.meshgrid(self.xGrid, self.xGrid, self.xGrid) 
 
     self.bandwidth = tf.linspace(-1.5, 2.3, self.bandwidth_num) #exponential #
-    #self.bandwidth = tf.exp(-tf.linspace(-1.5, 2.2, self.bandwidth_num)) # linear
 
   def build(self, input_shape): #第一次调用层时调用
 
@@ -81,32 +80,21 @@ class SOG_3D_pointcharge(tf.keras.layers.Layer):
     self.shift = []
 
     a = self.bandwidth.numpy()
-
-    #value = [-2.09345405242674e-33, 1.91057276725769, 1.65305233001709, 1.41834092140198, 1.6882004737854, 8.35887622833252, 3.99586319923401, 0.359466820955276, 1.03174149990082]
-
     for ii in range(self.bandwidth_num):
       init = tf.constant_initializer(a[ii])
-      #init = tf.constant_initializer(value[ii])
       self.shift.append(self.add_weight(name="std_"+str(ii),
-                       #initializer=tf.initializers.ones(),
-                       #shape=[1,]))
                        initializer=init,
                        shape=[1,]))
                        
     self.amplitud = []
     
     for ii in range(self.bandwidth_num):
-      #init = tf.constant_initializer(a[ii])
       self.amplitud.append(self.add_weight(name="bias_"+str(ii),
                        initializer=tf.initializers.ones(), shape=[1,]))#initializer=init, shape=[1,])) #initializer=init, shape=[1,])) #
 
-    #print("initial shift",self.shift) 
-    #print("initial amplitud",self.amplitud)                  
-    # this needs to be properly initialized it
-
   @tf.function
   def call(self, input, charge):
-      start_time = time.time() #计时
+      start_time = time.time() # Start timing
 
       energies = []
 
@@ -117,7 +105,6 @@ class SOG_3D_pointcharge(tf.keras.layers.Layer):
       self_amplitud = tf.convert_to_tensor(self.amplitud, dtype=tf.float32)
 
       min_term = - 1 / tf.square( tf.exp(-self_shift[:,0])) #exponential
-      #min_term = - 1 / tf.square(self_shift[:,0]) #lineae
 
       min_term = tf.expand_dims(tf.expand_dims(tf.expand_dims(min_term,0),0),0)
       a = tf.expand_dims(squared_sum,-1)
@@ -126,49 +113,29 @@ class SOG_3D_pointcharge(tf.keras.layers.Layer):
       multiplier= tf.where(condition, 0.0, multiplier)
       multiplier = tf.expand_dims(multiplier, 0)
       multiplierRe = tf.math.real(multiplier)
-
       V = tf.cast(self.L, tf.float32) * tf.cast(self.L, tf.float32) * tf.cast(self.L, tf.float32)
-
       diag_sum = tf.reduce_sum(tf.reduce_sum(tf.reduce_sum(multiplier,-1),-1),-1)/(V*2)
-
       charge = tf.cast(charge, dtype=tf.float32) 
-      
       diag_sum = charge * diag_sum  
-
       charge_complex=tf.complex(charge, 0.00)
-
       input_te=tf.constant(2*np.pi,dtype = tf.float32)/tf.cast(self.L, tf.float32)*(input-self.L/2)
-
-      recon = tfft.nufft(charge_complex, input_te, grid_shape=self.x_grid.shape,transform_type='type_1', fft_direction='forward', tol=1e-05)
-      
+      recon = tfft.nufft(charge_complex, input_te, grid_shape=self.x_grid.shape,transform_type='type_1', fft_direction='forward', tol=1e-05)     
       Rerecon=tf.math.real(recon)
       Imrecon=tf.math.imag(recon)
-
       multRe = tf.multiply(multiplierRe, Rerecon)
       multIm = tf.multiply(multiplierRe, Imrecon)
-
       mult_fft = tf.complex(multRe, multIm)
-
       Ifftcon = tf.math.real(tfft.nufft(mult_fft, input_te, [], transform_type='type_2', fft_direction='backward', tol=1e-05)/tf.complex(2*V,0.0))
-      
       energy = (Ifftcon - diag_sum) * charge
       energies=[]
       energies.append(tf.expand_dims(energy, axis=-1))
       energy = tf.concat(energies, axis=-1)
-      
-      print("Here", energy.shape)
-
-      end_time = time.time() #计时
-
-      print(f'Step Deconv New took {start_time - end_time:.6f} seconds')
-
-      #print(recon.shape)
 
 ###
 
       return energy
 
-# 没有自能项  包括了0阶项
+# No self-energy term included, including the zeroth-order term
 class SOG_3DmixedSpecies_dimer(tf.keras.layers.Layer):
   def __init__(self, nChannels, NpointsMesh, xLims):
     super(SOG_3DmixedSpecies_dimer, self).__init__()
@@ -182,7 +149,7 @@ class SOG_3DmixedSpecies_dimer(tf.keras.layers.Layer):
     print(xLims)
     self.L = np.abs(self.xLims[1] - self.xLims[0])
     self.tau = tf.constant(16*(self.L/(2*np.pi*NpointsMesh))**2, 
-                           dtype = tf.float32)# the size of the mollifications
+                           dtype = tf.float32)
     self.kGrid = tf.constant((2*np.pi/self.L)*\
                               np.linspace(-(NpointsMesh//2), 
                                             NpointsMesh//2, 
@@ -195,7 +162,6 @@ class SOG_3DmixedSpecies_dimer(tf.keras.layers.Layer):
     self.x_grid, self.y_grid, self.z_grid = tf.meshgrid(self.xGrid, self.xGrid, self.xGrid) 
 
     self.bandwidth = tf.linspace(0.0, 1.8, self.bandwidth_num) #exponential #
-    #self.bandwidth = tf.exp(-tf.linspace(-1.5, 2.2, self.bandwidth_num)) # linear
 
 
   def build(self, Q): #第一次调用层时调用
@@ -214,8 +180,7 @@ class SOG_3DmixedSpecies_dimer(tf.keras.layers.Layer):
     tf.print(self.amplitud_1)
 
   @tf.function
-  def call(self, input, charge): # 2 * 25 * 3  (2, 25, 32) 
-      start_time = time.time() #计时
+  def call(self, input, charge):
       
       V = tf.cast(self.L, tf.float32) * tf.cast(self.L, tf.float32) * tf.cast(self.L, tf.float32)
       squared_sum = tf.square(self.kx_grid) + tf.square(self.ky_grid) + tf.square(self.kz_grid)
@@ -236,33 +201,20 @@ class SOG_3DmixedSpecies_dimer(tf.keras.layers.Layer):
       print(charge_complex.shape)
       
       input_te = tf.constant(2*np.pi,dtype = tf.float32)/tf.cast(self.L, tf.float32)*(input-self.L/2)
-      #input_te = input-self.L/2
-      
-      #options = tfft.Options()
-      #options.points_range = "INFINITE"
-
-      #tf.print(tf.reduce_max(input_te),tf.reduce_min(input_te))
-
-      #energies = []
       
       energy = tf.zeros((input.shape[0], input.shape[1]), dtype=tf.float32)
 
       for i in range(charge_complex.shape[-1]):
-         #print(i)
          charge_select = charge_complex[:,:,i]
          grid_shape = tf.convert_to_tensor(self.x_grid.shape, dtype=tf.int32)
-         #tf.print(charge_select.dtype, input_te.dtype, grid_shape.dtype)
-         #tfft.PointsRange('infinite')
          recon = tfft.nufft(charge_select, input_te, grid_shape=grid_shape, transform_type='type_1', fft_direction='forward', tol=1e-05)  
          Rerecon = tf.math.real(recon)
          Imrecon = tf.math.imag(recon)
          multRe = tf.multiply(multiplierRe, Rerecon)
          multIm = tf.multiply(multiplierRe, Imrecon)
          mult_fft = tf.complex(multRe, multIm)
-         # tf.print(mult_fft.dtype, input_te.dtype)
          Ifftcon = tf.math.real(tfft.nufft(mult_fft, input_te, [], transform_type='type_2', fft_direction='backward', tol=1e-05))/(2*V) # 计算到全部粒子位置再乘系数相加
          energy = energy + tf.math.real(charge_select) * (Ifftcon - diag_sum)
-         #energy = energy + tf.math.real(charge_select) * Ifftcon
       
       return energy
       
@@ -294,7 +246,7 @@ class SOG_3DmixedSpecies_Water(tf.keras.layers.Layer):
 
     self.bandwidth = tf.linspace(-0.5, 1.8, self.bandwidth_num) #exponential #
 
-  def build(self, Q): #第一次调用层时调用
+   # Called the first time the layer is invoked
 
     print("building the channels")
     # we initialize the channel multipliers
@@ -329,32 +281,19 @@ class SOG_3DmixedSpecies_Water(tf.keras.layers.Layer):
       Nsamples, Npoints, Dimenions = input.shape
       Npoints_Divide_3 = tf.cast(Npoints/3, tf.int32)
 
-      # tf.print("Npoints_Divide_3 == ", Npoints_Divide_3)
-      # tf.print(charge.shape)
-      # tf.print(self.grid_shape)
-
       energy = tf.zeros((input.shape[0], input.shape[1]), dtype=tf.float32)
       charge_complex = tf.reshape(charge, (charge.shape[0], charge.shape[1], -1))
       charge_complex = tf.complex(charge_complex, 0.0) # (4, 300, 16)
       
-      ####  傅里叶乘子 1 ####
-      #tf.print("shift_O_O:",self.shift_O_O[:])
-      #tf.print("amplitud_O_O:",self.amplitud_O_O)
+      ####  Fourier Multiplier 1 ####
       min_term_O_O = - 1 / tf.exp(-2*self.shift_O_O[:]) #exponential
-      #tf.print("min_term_O_O:",min_term_O_O.shape, min_term_O_O)
       min_term_O_O = tf.expand_dims(tf.expand_dims(tf.expand_dims(min_term_O_O, 0), 0), 0)
-      #tf.print("min_term_O_O_expand:",min_term_O_O.shape, min_term_O_O)
-      #tf.print("squ_exp:",self.squ_exp)
       multiplier_O_O = tf.expand_dims(tf.expand_dims(tf.expand_dims(self.amplitud_O_O[:],0),0),0) * tf.exp(self.squ_exp * min_term_O_O)
-      #tf.print("multiplier_O_O:",multiplier_O_O.shape, multiplier_O_O)
       multiplier_O_O = tf.reduce_sum(multiplier_O_O, axis=-1)
-      #tf.print("multiplier_O_O1:",multiplier_O_O.shape, multiplier_O_O)
       multiplier_O_O = tf.expand_dims(multiplier_O_O, 0)
-      #tf.print("multiplier_O_O2:",multiplier_O_O.shape, multiplier_O_O)
       multiplierRe_O_O = tf.math.real(multiplier_O_O) # (1, 21, 21, 21)
-      #tf.print("multiplier_O_O3:",multiplier_O_O.shape, multiplier_O_O)
       
-      ####  傅里叶乘子 2 ####
+      ####  Fourier Multiplier 2 ####
       min_term_O_H = - 1 / tf.exp(-2*self.shift_O_H[:]) #exponential
       min_term_O_H = tf.expand_dims(tf.expand_dims(tf.expand_dims(min_term_O_H, 0), 0), 0)
       multiplier_O_H = tf.expand_dims(tf.expand_dims(tf.expand_dims(self.amplitud_O_H[:],0),0),0) * tf.exp(self.squ_exp * min_term_O_H)
@@ -363,7 +302,7 @@ class SOG_3DmixedSpecies_Water(tf.keras.layers.Layer):
       multiplier_O_H = tf.expand_dims(multiplier_O_H, 0)
       multiplierRe_O_H = tf.math.real(multiplier_O_H)
       
-      ####  傅里叶乘子 3 ####
+      ####  Fourier Multiplier 3 ####
       min_term_H_O = - 1 / tf.exp(-2*self.shift_H_O[:]) #exponential
       min_term_H_O = tf.expand_dims(tf.expand_dims(tf.expand_dims(min_term_H_O, 0), 0), 0)
       multiplier_H_O = tf.expand_dims(tf.expand_dims(tf.expand_dims(self.amplitud_H_O[:],0),0),0) * tf.exp(self.squ_exp * min_term_H_O)
@@ -372,7 +311,7 @@ class SOG_3DmixedSpecies_Water(tf.keras.layers.Layer):
       multiplier_H_O = tf.expand_dims(multiplier_H_O, 0)
       multiplierRe_H_O = tf.math.real(multiplier_H_O)
       
-      ####  傅里叶乘子 4 ####
+      ####  Fourier Multiplier 4 ####
       min_term_H_H = - 1 / tf.exp(-2*self.shift_H_H[:]) #exponential
       min_term_H_H = tf.expand_dims(tf.expand_dims(tf.expand_dims(min_term_H_H, 0), 0), 0)
       multiplier_H_H = tf.expand_dims(tf.expand_dims(tf.expand_dims(self.amplitud_H_H[:], 0), 0), 0) * tf.exp(self.squ_exp * min_term_H_H)
@@ -381,17 +320,13 @@ class SOG_3DmixedSpecies_Water(tf.keras.layers.Layer):
       multiplier_H_H = tf.expand_dims(multiplier_H_H, 0)
       multiplierRe_H_H = tf.math.real(multiplier_H_H)
 
-      #multiplierRe = tf.concat([tf.tile(multiplierRe_1, [8,1,1,1]), tf.tile(multiplierRe_2, [8,1,1,1])], axis=0)
-      #print(multiplierRe.shape)
-
-      ####  计算  ####
+      ####  Calculation  ####
       input_te = tf.constant(2*np.pi,dtype = tf.float32)/self.L * (input - self.L/2)
       input_te = tf.expand_dims(input_te, axis=1) # (4, 1, 300, 3)
       transposed_charge = tf.transpose(charge_complex, perm=[0, 2, 1]) # (4, 16, 300)
       
       recon_O = tfft.nufft(transposed_charge[:,:,:Npoints_Divide_3], input_te[:,:,:Npoints_Divide_3,:], grid_shape=self.grid_shape, transform_type='type_1', fft_direction='forward', tol=1e-03)
       recon_H = tfft.nufft(transposed_charge[:,:,Npoints_Divide_3:], input_te[:,:,Npoints_Divide_3:,:], grid_shape=self.grid_shape, transform_type='type_1', fft_direction='forward', tol=1e-03)
-      # print(recon_O.shape,recon_H.shape) # (4, 16, 21, 21, 21) (10, 16, 31, 31, 31) (10, 16, 31, 31, 31)
 
       Rerecon_O = tf.math.real(recon_O)
       Imrecon_O = tf.math.imag(recon_O)
@@ -419,8 +354,6 @@ class SOG_3DmixedSpecies_Water(tf.keras.layers.Layer):
 
       Ifftcon_O = tf.math.real(tfft.nufft(mult_fft_O, input_te[:,:,:Npoints_Divide_3,:], [], transform_type='type_2', fft_direction='backward', tol=1e-03))/(2*self.V) # 计算到全部粒子位置再乘系数相加 This 1/2 is due to the remove of double count of pairs
       Ifftcon_H = tf.math.real(tfft.nufft(mult_fft_H, input_te[:,:,Npoints_Divide_3:,:], [], transform_type='type_2', fft_direction='backward', tol=1e-03))/(2*self.V) # 计算到全部粒子位置再乘系数相加 This 1/2 is due to the remove of double count of pairs
-      
-      # print(Ifftcon_O.shape, Ifftcon_H.shape)  # (10, 16, 100) (10, 16, 200)
       
       Ifftcon = tf.concat([Ifftcon_O,Ifftcon_H], axis=2)
       new_value = tf.multiply(tf.math.real(transposed_charge), Ifftcon)
@@ -453,8 +386,6 @@ class SOG_3DmixedSpecies_Water(tf.keras.layers.Layer):
       Force_O = tf.stack([new_value_x_O, new_value_y_O, new_value_z_O], axis=-1)
       Force_H = tf.stack([new_value_x_H, new_value_y_H, new_value_z_H], axis=-1)
       Force = tf.concat([Force_O, Force_H], axis=2)
-      # print(Force.shape)
-      # (10, 16, 300, 3)
         
       Force = tf.reduce_sum(Force, axis=1)
 

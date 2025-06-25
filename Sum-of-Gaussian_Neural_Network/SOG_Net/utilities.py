@@ -71,8 +71,6 @@ class pyramidLayer_ThreeBodyQ_DNN(tf.keras.layers.Layer):
   def build(self, input_shape):
     self.kernel = []
     self.bias = []
-    #print(int(input_shape[-1]))
-    #print(self.num_outputs[0])
     self.kernel.append(self.add_weight(name="kernel",
                        initializer=tf.initializers.GlorotNormal(),
                        shape=[int(input_shape[-1]),self.num_outputs[0]],dtype=tf.float32))
@@ -185,10 +183,6 @@ def gen_coor_3d_Q(r_in,charge, neigh_list, L, av = tf.constant([0.0, 0.0], dtype
     r_in_rep_Z  = tf.tile(tf.expand_dims(r_in[:,:,2], -1), [1 ,1, max_num_neighs] )
     r_in_gath_Z = tf.gather(r_in[:,:,2], neigh_list, batch_dims = 1, axis = 1)
 
-    #print(r_in.shape)
-    #print(r_in[:,:,0].shape)
-    #print(charge.shape)
-
     C_in_rep  = tf.tile(tf.expand_dims(charge, -1), [1 ,1, max_num_neighs])
 
     C_in_rep = tf.cast(C_in_rep, dtype=tf.float32)
@@ -196,13 +190,7 @@ def gen_coor_3d_Q(r_in,charge, neigh_list, L, av = tf.constant([0.0, 0.0], dtype
     C_in_gath = tf.gather(charge, neigh_list, batch_dims = 1, axis = 1)
 
     C_in_gath = tf.cast(C_in_gath, dtype=tf.float32)
-
-    #print(C_in_gath.dtype)
-    #tf.print(C_in_gath[1,1,1])
-    #tf.print(C_in_rep.shape,C_in_gath.shape)
-    #tf.print(charge.shape,neigh_list.shape)
     
-
     # compute the periodic dimension wise distance
     r_diff_X = r_in_gath_X - r_in_rep_X
     r_diff_X = r_diff_X - L*tf.round(r_diff_X/L)
@@ -212,9 +200,6 @@ def gen_coor_3d_Q(r_in,charge, neigh_list, L, av = tf.constant([0.0, 0.0], dtype
     r_diff_Z = r_diff_Z - L*tf.round(r_diff_Z/L)
 
     norm = tf.sqrt(tf.square(r_diff_X) + tf.square(r_diff_Y) + tf.square(r_diff_Z))
-   
-    #tf.print(norm.shape)
-    #time.sleep(4)
 
     binv = tf.math.reciprocal(norm) 
     bx = tf.math.multiply(r_diff_X, binv)
@@ -238,17 +223,6 @@ def gen_coor_3d_Q(r_in,charge, neigh_list, L, av = tf.constant([0.0, 0.0], dtype
     by_safe_Q = tf.where(mask, by_Q, zeroDummy)
     bz_safe_Q = tf.where(mask, bz_Q, zeroDummy)
 
-    #print("Hi")
-    # print(binv_safe.shape, bx_safe_Q.shape)
-    #print((C_in_gath*binv_safe).shape)
-    #print((C_in_rep*C_in_gath*binv_safe).shape)
-    #print((C_in_gath*binv_safe).dtype)
-    
-    # 将三个张量沿着新轴拼接成一个形状为 100x100x100x3 的张量
-    #stacked_tensor = tf.stack([binv_safe, bx_safe, by_safe, bz_safe, binv_safe_Q, bx_safe_Q, by_safe_Q, bz_safe_Q], axis=-1)
-
-    #print(stacked_tensor.shape)
-
     r_total = tf.concat([tf.reshape(binv_safe, (-1,1)), 
                           tf.reshape(bx_safe,   (-1,1)), 
                           tf.reshape(by_safe,   (-1,1)),
@@ -258,71 +232,53 @@ def gen_coor_3d_Q(r_in,charge, neigh_list, L, av = tf.constant([0.0, 0.0], dtype
                           tf.reshape(by_safe_Q,   (-1,1)),
                           tf.reshape(bz_safe_Q,   (-1,1))  ], axis = 1)
     
-    #tf.print("shape ", binv_safe.shape, bx_safe.shape)
     return r_total #stacked_tensor #r_total
 
-###  近邻查找  ###
+### Neighbor Search ###
 def find_and_sort_neighbors_dimer(Rinnumpy, chargesArray, L, radious, maxNumNeighs):
     n_samples, n_points, dimension = Rinnumpy.shape
-    #print(n_samples, n_points)
     Idx = np.zeros((n_samples, n_points, maxNumNeighs), dtype=np.int32)-1
     for i in range(n_samples):
       r_sample = Rinnumpy[i]
       c_sample = chargesArray[i]
       tree = cKDTree(r_sample, boxsize=[L, L, L])
       r_list = tree.query_ball_point(r_sample,radious)
-      #for j,row in enumerate(r_list):
-      #   print(chargesArray[i,row])
       r_list = [[elem for elem in row if elem!=i and c_sample[elem] != 0] for i,row in enumerate(r_list)] 
-      #print("Ordered neighbor list")
       for j, row in enumerate(r_list):
-        # 排序 但没考虑周期边界条件
+        # Sort but without considering periodic boundary conditions
         if len(row) > 0:
-           # 计算到每个邻居的距离
+             # Calculate the distance to each neighbor
            distances = cdist([r_sample[j]], r_sample[row]).flatten()
-           # 按照距离排序
+             # Sort by distance
            sorted_indices = np.argsort(distances)
            sorted_neighbors = np.array(row)[sorted_indices]
-           # 将排序后的邻居存入 Idx
+             # Store the sorted neighbors into Idx
            Idx[i, j, :len(sorted_neighbors)] = sorted_neighbors
-        # 不排序
+        # Do not sort
         #Idx[i,j,:len(row)]=row
-        #print(chargesArray[i,row])
 
     return Idx
 
 def find_and_sort_neighbors_water(Rinnumpy, chargesArray, L, radious_A, maxNumNeighs_O_A, maxNumNeighs_H_A, radious_R, maxNumNeighs_O_R, maxNumNeighs_H_R):
     n_samples, n_points, dimension = Rinnumpy.shape
 
-    #print(Rinnumpy.shape,chargesArray.shape,L,"her6")
-
     Idx_O_A = np.zeros((n_samples, n_points, maxNumNeighs_O_A), dtype=np.int32) - 1
     Idx_H_A = np.zeros((n_samples, n_points, maxNumNeighs_H_A), dtype=np.int32) - 1
     Idx_O_R = np.zeros((n_samples, n_points, maxNumNeighs_O_R), dtype=np.int32) - 1
     Idx_H_R = np.zeros((n_samples, n_points, maxNumNeighs_H_R), dtype=np.int32) - 1
-    
-    #print(Rinnumpy.shape,chargesArray.shape, chargesArray[0])
 
     for i in range(n_samples):
-      #print(i)
       r_sample = Rinnumpy[i]
       c_sample = chargesArray[i]
-      #print(c_sample.shape,r_sample.shape)
       tree = cKDTree(r_sample, boxsize=[L, L, L])
       r_list_A = tree.query_ball_point(r_sample, radious_A)
       r_list_R = tree.query_ball_point(r_sample, radious_R)
-      #for j,row in enumerate(r_list):
-      #   print(chargesArray[i,row])
-      #print(r_list_A) 
       r_list_O_A = [[elem for elem in row if elem!=j and c_sample[elem] == 1] for j,row in enumerate(r_list_A)] 
       r_list_H_A = [[elem for elem in row if elem!=j and c_sample[elem] == 2] for j,row in enumerate(r_list_A)] 
       r_list_O_R = [[elem for elem in row if elem!=j and c_sample[elem] == 1] for j,row in enumerate(r_list_R)]
       r_list_H_R = [[elem for elem in row if elem!=j and c_sample[elem] == 2] for j,row in enumerate(r_list_R)]
-      
-      #print(r_list_O_A[0],r_list_H_A[0],r_list_O_R[0])
-
       for j,row in enumerate(r_list_O_A):
-         # 不排序
+         # Do not sort
          if len(row)<=maxNumNeighs_O_A:
             Idx_O_A[i,j,:len(row)]=row
          else:
@@ -330,7 +286,7 @@ def find_and_sort_neighbors_water(Rinnumpy, chargesArray, L, radious_A, maxNumNe
             Idx_O_A[i,j,:maxNumNeighs_O_A]=row[:maxNumNeighs_O_A]
       
       for j,row in enumerate(r_list_H_A):
-         # 不排序
+         # Do not sort
          if len(row)<=maxNumNeighs_H_A:
             Idx_H_A[i,j,:len(row)]=row
          else:
@@ -338,7 +294,7 @@ def find_and_sort_neighbors_water(Rinnumpy, chargesArray, L, radious_A, maxNumNe
             Idx_H_A[i,j,:maxNumNeighs_H_A]=row[:maxNumNeighs_H_A]
 
       for j,row in enumerate(r_list_O_R):
-         # 不排序
+         # Do not sort
          if len(row)<=maxNumNeighs_O_R:
             Idx_O_R[i,j,:len(row)]=row
          else:
@@ -346,7 +302,7 @@ def find_and_sort_neighbors_water(Rinnumpy, chargesArray, L, radious_A, maxNumNe
             Idx_O_R[i,j,:maxNumNeighs_O_R]=row[:maxNumNeighs_O_R]
       
       for j,row in enumerate(r_list_H_R):
-         # 不排序
+         # Do not sort
          if len(row)<=maxNumNeighs_H_R:
             Idx_H_R[i,j,:len(row)]=row
          else:
