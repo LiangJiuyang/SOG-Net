@@ -9,7 +9,7 @@ Paper Links: [ArXiv](https://arxiv.org/abs/2502.04668)
 
 ## Requirements
 - Python 3.10.9 or higher
-- Tensorflow-gpu
+- Tensorflow-gpu (used for Deep-SOG) or PyTorch (used for CACE-SOG)
 - FINUFFT (tensorflow version)
 - ASE (Atomic Simulation Environment)
 
